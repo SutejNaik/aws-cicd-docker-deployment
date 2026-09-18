@@ -1,43 +1,27 @@
-name: CI
+name: AWS OIDC Test
 
 on:
   push:
     branches:
       - main
-      
+
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  test:
+  aws-auth:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run tests
-        run: python test_app.py
-
-      - name: Build Docker image
-        run: docker build -t aws-cicd-docker-deployment .
-
       - name: Configure AWS credentials
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::228210524459:role/GitHubActionsECRRole
           aws-region: us-east-1
 
       - name: Verify AWS identity
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: aws sts get-caller-identity
