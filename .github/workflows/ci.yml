@@ -14,7 +14,6 @@ permissions:
 
 jobs:
   test:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -35,11 +34,13 @@ jobs:
       - name: Build Docker image
         run: docker build -t aws-cicd-docker-deployment .
 
-      - name: Debug OIDC claims
-        uses: github/actions-oidc-debugger@main
-
       - name: Configure AWS credentials
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::228210524459:role/GitHubActionsECRRole
           aws-region: us-east-1
+
+      - name: Verify AWS identity
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: aws sts get-caller-identity
