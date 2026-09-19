@@ -78,11 +78,11 @@ jobs:
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
 
-      # 11. Deploy to EC2 using AWS Systems Manager
+           # 11. Deploy to EC2 using AWS Systems Manager
       - name: Deploy to EC2
         run: |
           COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "${{ env.EC2_INSTANCE_ID }}" \
+            --instance-ids "i-0c20d9e037759a045" \
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
               "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 228210524459.dkr.ecr.us-east-1.amazonaws.com",
@@ -92,12 +92,16 @@ jobs:
             ]' \
             --query "Command.CommandId" \
             --output text \
-            --region "${{ env.AWS_REGION }}")
+            --region "us-east-1")
 
           echo "SSM Command ID: $COMMAND_ID"
 
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
+            --instance-id "i-0c20d9e037759a045" \
+            --region "us-east-1"
+
+          echo "EC2 deployment completed successfully."
             --instance-id "${{ env.EC2_INSTANCE_ID }}" \
             --region "${{ env.AWS_REGION }}"
 
