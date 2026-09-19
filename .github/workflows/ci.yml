@@ -1,4 +1,4 @@
-name: AWS OIDC Debug
+name: Build, Test and Push Docker Image
 
 on:
   push:
@@ -9,53 +9,70 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: aws-cicd-docker-deployment
+  ECR_REGISTRY: 228210524459.dkr.ecr.us-east-1.amazonaws.com
+
 jobs:
-  debug:
+  build-test-push:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Show GitHub context
+      # 1. Get the source code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 3. Install Python dependencies
+      - name: Install dependencies
         run: |
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Repository ID: $GITHUB_REPOSITORY_ID"
-          echo "Owner: $GITHUB_REPOSITORY_OWNER"
-          echo "Owner ID: $GITHUB_REPOSITORY_OWNER_ID"
-          echo "Ref: $GITHUB_REF"
-          echo "Event: $GITHUB_EVENT_NAME"
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          pip install pytest
 
-      - name: Get OIDC token
-        id: oidc
-        run: |
-          TOKEN=$(curl -sS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" \
-            | python -c "import sys,json; print(json.load(sys.stdin)['value'])")
+      # 4. Run tests
+      - name: Run tests
+        run: pytest
 
-          python - "$TOKEN" <<'PY'
-          import sys
-          import json
-          import base64
-
-          token = sys.argv[1]
-          payload = token.split('.')[1]
-          payload += '=' * (-len(payload) % 4)
-
-          claims = json.loads(
-              base64.urlsafe_b64decode(payload)
-          )
-
-          print("OIDC claims:")
-          print("  sub:", claims.get("sub"))
-          print("  aud:", claims.get("aud"))
-          print("  repository:", claims.get("repository"))
-          print("  repository_id:", claims.get("repository_id"))
-          print("  repository_owner:", claims.get("repository_owner"))
-          print("  repository_owner_id:", claims.get("repository_owner_id"))
-          print("  ref:", claims.get("ref"))
-          PY
-
+      # 5. Configure AWS authentication using OIDC
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::228210524459:role/GitHubActionsECRRole
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 6. Verify AWS identity
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      # 7. Login to Amazon ECR
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 8. Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.ECR_REPOSITORY }}:latest \
+            .
+
+      # 9. Tag Docker image for ECR
+      - name: Tag Docker image
+        run: |
+          docker tag \
+            ${{ env.ECR_REPOSITORY }}:latest \
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+
+      # 10. Push Docker image to ECR
+      - name: Push Docker image to ECR
+        run: |
+          docker push \
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
